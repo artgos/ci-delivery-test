@@ -1,0 +1,32 @@
+buildscript {
+    apply from: 'https://gist.githubusercontent.com/artzag/ff27d139125dd5650a00b4ee16a97903/raw/72f14b040aef3e753d53984bee1e747dd52160a6/parent.gradle'
+    //apply from: './parent.gradle'
+
+    repositories {
+        jcenter()
+        mavenCentral()
+    }
+}
+
+description = 'Simple Gradle build'
+
+
+
+import com.bmuschko.gradle.docker.tasks.image.Dockerfile
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerPushImage
+
+File dockerfile = new File(projectDir, 'Dockerfile')
+
+
+task buildImage(type: DockerBuildImage) {
+    inputDir = projectDir
+    dockerFile = dockerfile
+    tag = "arttest-docker-local.jfrog.io/$artifactid:$version"
+}
+
+task pushImage(type: DockerPushImage) {
+    dependsOn buildImage
+    imageName = buildImage.tag
+    tag = "$version"
+}
