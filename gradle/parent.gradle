@@ -1,0 +1,141 @@
+buildscript {
+    repositories {
+        maven {
+            name "release"
+            url "https://arttest.jfrog.io/arttest/libs-release"
+        }
+        maven {
+            name "snapshot"
+            url "https://arttest.jfrog.io/arttest/libs-snapshot"
+        }
+        mavenLocal()
+        jcenter()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.researchgate:gradle-release:2.6.0'
+        classpath 'com.bmuschko:gradle-docker-plugin:3.0.11'
+    }
+}
+
+// Set up build and release profile properties
+ext {
+    if (!project.hasProperty('mode')) {
+        throw new InvalidUserDataException('Project must have \'mode=[MAVEN,DOCKER]\' property specified in \'gradle.properties\' file.')
+    }
+
+    // Setup environment for MAVEN build type
+    if('MAVEN'.equals(project.mode)) {
+        buildJobs = 'build'
+        uploadJob = 'uploadArchives'
+        commitMssg = '[Gradle Release Plugin] - new maven version commit: '
+    }
+    // Setup environment for DOCKER build type
+    else if('DOCKER'.equals(project.mode)){
+        buildJobs = 'buildImage'
+        uploadJob = 'pushImage'
+        commitMssg = '[Gradle Release Plugin] - new docker version commit: '
+    }
+    // Unsupported build mode
+    else {
+        throw new InvalidUserDataException('Unsupported \'mode\' property value specified in \'gradle.properties\' file: \'' +
+                project.mode +
+                '\'. It must be either \'MAVEN\' or \'DOCKER\'')
+    }
+
+    // Overwrite working branch name
+    if (project.hasProperty('workingBranch')) {
+        defaultBranch = project.workingBranch
+    } else {
+        defaultBranch = 'development'
+    }
+
+    // Set DockerRemoteApiPlugin properties using values fetched from '~/.gradle/gradle.properties' file
+    username = repoUsernameProp
+    password = repoPasswordProp
+    email = repoEmailProp
+}
+
+apply plugin: net.researchgate.release.ReleasePlugin
+apply plugin: com.bmuschko.gradle.docker.DockerRemoteApiPlugin
+apply plugin: 'maven'
+
+afterReleaseBuild.dependsOn project.uploadJob
+
+// RELEASE PLUGIN SETTINGS (build, version management, scm operations). Common for all build modes.
+release {
+    failOnCommitNeeded = true
+    failOnPublishNeeded = true
+    failOnSnapshotDependencies = true
+    failOnUnversionedFiles = true
+    failOnUpdateNeeded = true
+    revertOnFail = true
+    preCommitText = ''
+    preTagCommitMessage = '[Gradle Release Plugin] - pre tag commit: '
+    tagCommitMessage = '[Gradle Release Plugin] - creating tag: '
+    newVersionCommitMessage = project.commitMssg
+    tagTemplate = '${version}'
+    versionPropertyFile = 'gradle.properties'
+    versionProperties = []
+    buildTasks = [project.buildJobs]
+
+    scmAdapters = [
+            net.researchgate.release.GitAdapter
+    ]
+
+    git {
+        requireBranch = project.defaultBranch
+        pushToRemote = 'origin'
+        pushToBranchPrefix = ''
+        commitVersionFileOnly = false
+        signTag = false
+    }
+}
+
+// RELEASE PLUGIN SETTINGS (upload to Artifactory). Used in 'MAVEN' build mode.
+allprojects {
+    afterEvaluate { project ->
+        project.apply plugin: 'java'
+
+        uploadArchives {
+            repositories {
+                mavenDeployer {
+                    pom.packaging = project.packaging
+                    pom.groupId = project.group
+                    pom.version = project.version
+                    pom.artifactId = project.artifactid
+
+                    if(project.version.endsWith('-SNAPSHOT')) {
+                        repository(url: 'https://arttest.jfrog.io/arttest/libs-snapshot-local') {
+                            authentication(userName: repoUsernameProp, password: repoPasswordProp);
+                        }
+                    }
+                    else {
+                        repository(url: 'https://arttest.jfrog.io/arttest/libs-release-local') {
+                            authentication(userName: repoUsernameProp, password: repoPasswordProp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
+// DOCKER PLUGIN SETTINGS (upload to Artifactory). Used in 'DOCKER' build mode.
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerPushImage
+
+File dockerfile = new File(projectDir, 'Dockerfile')
+
+task buildImage(type: DockerBuildImage) {
+    inputDir = projectDir
+    dockerFile = dockerfile
+    tag = "arttest-docker-local.jfrog.io/$artifactid:$version"
+}
+
+task pushImage(type: DockerPushImage) {
+    dependsOn buildImage
+    imageName = buildImage.tag
+    tag = "$version"
+}

@@ -14,4 +14,4 @@ buildscript {
     }
 }
 
-apply from: "https://gist.githubusercontent.com/artzag/ff27d139125dd5650a00b4ee16a97903/raw/0e0cfb83f85bd3c37045ed0f3de3dd7e80c04b0b/parent.gradle"
+apply from: "https://gist.githubusercontent.com/artzag/ff27d139125dd5650a00b4ee16a97903/raw/72e267852b0ce0d941bead0f3d404c366564f0df/parent.gradle"
